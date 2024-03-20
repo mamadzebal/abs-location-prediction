@@ -1,0 +1,6 @@
+.installed.cfg
+bin
+dist
+__pycache__/
+tmp-learning-models/*
+!tmp-learning-models/.gitkeep
