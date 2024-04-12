@@ -1,100 +1,91 @@
 import numpy as np
-
+import os
 
 class Environment:
-    def __init__(self, NUM_TIME_FRAMES, NUM_SERVICES, NUM_TRAIN_TIME_FRAMES,REWARD_BASE):
+    def __init__(self, NUM_TIME_FRAMES, CANDIDATE_LOCATIONS, NUM_TRAIN_TIME_FRAMES,REWARD_BASE, CHECKPOINT_DIR):
         self.NUM_TIME_FRAMES = NUM_TIME_FRAMES
-        self.NUM_SERVICES = NUM_SERVICES
+        self.CANDIDATE_LOCATIONS = CANDIDATE_LOCATIONS
         self.NUM_TRAIN_TIME_FRAMES = NUM_TRAIN_TIME_FRAMES
         self.states = []
         self.REWARD_BASE = REWARD_BASE
+        self.checkpoint_dir = CHECKPOINT_DIR
 
-    def initialize_states(self, initialization_type = 'fixed'):
-        # fixed existing services
-        fixed_array = np.zeros((self.NUM_SERVICES,))
-        if(initialization_type == 'fixed'):
-            # fixed_array[0] = 1
-            fixed_array[2] = 1
-            fixed_array[4] = 1
-            fixed_array[5] = 1
-            # fixed_array[7] = 1
-            # fixed_array[10] = 1
-            # fixed_array[13] = 1
-            # fixed_array[17] = 1
-        time_frames = np.tile(fixed_array, (self.NUM_TIME_FRAMES + 1, 1))
+    def generate_random_location_vector(self):
+        # Initialize a vector with zeros
+        location_vector = np.zeros(self.CANDIDATE_LOCATIONS)
+        
+        # Set one random location to 1
+        location_vector[np.random.randint(self.CANDIDATE_LOCATIONS)] = 1
+        
+        return location_vector
 
+    def generate_biased_location_vector(self):
+        # Initialize a vector with zeros
+        location_vector = np.zeros(self.CANDIDATE_LOCATIONS)
+        
+        # TODO: update the probability based on CANDIDATE LOCATIONS
+        # Fill outer squares with high probabilities
+        for i in range(5):
+            high_prob_indices = [i, 20+i, i*5, i*5+4]
+            location_vector[np.random.choice(high_prob_indices)] = 1
+        
+        # Fill second outer square with high probabilities
+        for j in [6, 7, 8, 11, 13, 16, 17, 18]:
+            location_vector[j] = np.random.choice([0, 1], p=[0.5, 0.5])
+        
+        # Ensure only one location is 1
+        num_ones = np.sum(location_vector)
+        if num_ones > 1:
+            indices = np.where(location_vector == 1)[0]
+            chosen_index = np.random.choice(indices)
+            location_vector[:] = 0
+            location_vector[chosen_index] = 1
+        
+        return location_vector
 
-        # randomly assign 0,1 for each services at each time frame
-        if(initialization_type == 'random'):
-            time_frames = np.random.randint(2, size=(self.NUM_TIME_FRAMES + 1, self.NUM_SERVICES))
+    def save_state(self, state, filename):
+        checkpoint_file = os.path.join(self.checkpoint_dir, filename)
+        np.save(checkpoint_file, state)
 
-            
-        elif(initialization_type == 'bernouli'):
-            # Set while true in order to not having all 0 for services
-            while True:
-                # Define the probabilities of each service at each time frame
-                probs = np.random.dirichlet(np.ones(self.NUM_SERVICES), size=self.NUM_TIME_FRAMES)
-                # Generate the data for each time frame using a Bernoulli distribution
-                time_frames = np.zeros((self.NUM_TIME_FRAMES + 1, self.NUM_SERVICES), dtype=np.int)
-                for t in range(self.NUM_TIME_FRAMES):
-                    time_frames[t+1] = np.random.binomial(1, probs[t])
-                if np.sum(time_frames[1]) > 4:
-                    break
+    def load_state(self, filename):
+        checkpoint_file = os.path.join(self.checkpoint_dir, filename)
+        pattern_matrix = np.load(checkpoint_file)
+        
+        return pattern_matrix
 
+    def initialize_states(self, initialization_type = 'fixed', learn = True, starting_point = 0):
+        num_pattern = self.NUM_TIME_FRAMES if(learn) else self.NUM_TRAIN_TIME_FRAMES
+        
         # generate a pattern for requests
-        elif(initialization_type == 'pattern'):
-            PATTERN_LENGTH = 20
-            # generate random 0/1 pattern
-            # pattern_matrix = np.random.randint(2, size=(PATTERN_LENGTH, self.NUM_SERVICES))
-
+        if(initialization_type == 'pattern'):
+            PATTERN_LENGTH = np.random.randint(5, 11)
+        
             # create pattern matrix
-            pattern_matrix = np.zeros((PATTERN_LENGTH, self.NUM_SERVICES))
-            # num_ones = int(PATTERN_LENGTH * 0.6)  # set desired number of ones in each column
-            # for j in range(self.NUM_SERVICES):
-            #     pattern_matrix[:num_ones,j] = 1
-            #     np.random.shuffle(pattern_matrix[:,j])
-            
-            # pattern_matrix[0] = np.array([0,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,1,1,0,1])
-            # pattern_matrix[1] = np.array([0,1,1,0,0,1,0,0,0,0,1,1,1,0,0,0,0,0,1,1])
-            # pattern_matrix[2] = np.array([0,0,0,1,1,1,0,0,0,0,1,1,0,1,1,0,0,1,0,0])
-            # pattern_matrix[3] = np.array([1,0,1,0,1,0,0,1,0,0,0,0,1,0,1,1,0,0,1,0])
-            # pattern_matrix[4] = np.array([1,1,1,1,0,1,0,0,0,0,0,1,0,1,0,1,0,0,0,0])
-            # pattern_matrix[5] = np.array([0,1,0,0,0,0,1,1,0,1,0,1,0,0,1,1,0,0,0,1])
-            # pattern_matrix[6] = np.array([0,1,0,0,0,1,0,0,1,1,1,1,0,0,0,0,0,0,1,1])
-            # pattern_matrix[7] = np.array([1,0,1,0,0,0,1,0,0,1,1,0,0,1,0,0,1,0,0,1])
-            # pattern_matrix[8] = np.array([0,1,1,0,1,0,0,0,1,0,0,1,0,0,1,0,0,1,1,0])
-            # pattern_matrix[9] = np.array([0,0,1,1,1,0,0,0,0,1,0,1,0,1,0,0,1,0,0,1])
+            pattern_matrix = np.zeros((PATTERN_LENGTH, self.CANDIDATE_LOCATIONS))
 
-            pattern_matrix[0]   = np.array([1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
-            pattern_matrix[1]   = np.array([0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
-            pattern_matrix[2]   = np.array([0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
-            pattern_matrix[3]   = np.array([0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
-            pattern_matrix[4]   = np.array([0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
-            pattern_matrix[5]   = np.array([0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
-            pattern_matrix[6]   = np.array([0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0])
-            pattern_matrix[7]   = np.array([0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0])
-            pattern_matrix[8]   = np.array([0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0])
-            pattern_matrix[9]   = np.array([0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0])
-            pattern_matrix[10]  = np.array([0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0])
-            pattern_matrix[11]  = np.array([0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0])
-            pattern_matrix[12]  = np.array([0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0])
-            pattern_matrix[13]  = np.array([0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0])
-            pattern_matrix[14]  = np.array([0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0])
-            pattern_matrix[15]  = np.array([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0])
-            pattern_matrix[16]  = np.array([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0])
-            pattern_matrix[17]  = np.array([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0])
-            pattern_matrix[18]  = np.array([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0])
-            pattern_matrix[19]  = np.array([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1])
+            for j in range(PATTERN_LENGTH):
+                pattern_matrix[j] = self.generate_biased_location_vector()
+
+            # pattern_matrix[0]   = np.array([1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
+            # pattern_matrix[1]   = np.array([0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0])
+            # pattern_matrix[2]   = np.array([0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0])
+            # pattern_matrix[3]   = np.array([0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0])
+            # pattern_matrix[4]   = np.array([0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0])
+            # pattern_matrix[5]   = np.array([0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
+            
+            # Reorder pattern matrix based on the starting point
+            pattern_matrix = np.roll(pattern_matrix, -starting_point, axis=0)
 
             # repeat pattern to cover all rows
-            num_repeats = int(np.ceil((self.NUM_TIME_FRAMES+1)/PATTERN_LENGTH))
+            num_repeats = int(np.ceil((num_pattern+1)/PATTERN_LENGTH))
             repeated_pattern = np.tile(pattern_matrix, (num_repeats, 1))
 
+
             # trim to correct number of rows
-            time_frames = repeated_pattern[:self.NUM_TIME_FRAMES+1]
+            time_frames = repeated_pattern[:num_pattern+1]
         
 
-        return time_frames
+        return time_frames, pattern_matrix
     
     def get_state(self, states, next_time):
         return states[next_time-self.NUM_TRAIN_TIME_FRAMES:next_time]

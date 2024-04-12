@@ -7,7 +7,7 @@ import random
 rnd = np.random
 
 class Agent(object):
-    def __init__(self, NUM_ACTIONS, INPUT_SHAPE, NUM_TRAIN_TIME_FRAMES, NAME,
+    def __init__(self, NUM_ACTIONS, INPUT_SHAPE, NUM_TRAIN_TIME_FRAMES, NAME, ITERATION,
                 # EPSILON=0, GAMMA=0.75, LR=0.001, WEIGHT_DECAY_LAMBDA=0, MEMORY_SIZE=1000000, BATCH_SIZE=10, EPSILON_MIN=0, EPSILON_DEC=5e-5, REPLACE_COUNTER=1000,
                 EPSILON, EPSILON_MIN, EPSILON_DEC, GAMMA, LR, WEIGHT_DECAY_LAMBDA, BATCH_SIZE, MEMORY_SIZE, REPLACE_COUNTER,
                 H_LAYER1_DIMENSION, H_LAYER2_DIMENSION, H_LAYER3_DIMENSION, H_LAYER4_DIMENSION, H_LAYER5_DIMENSION,
@@ -16,6 +16,7 @@ class Agent(object):
         # Check if CUDA (GPU) is available
         # self.device = T.device("cuda" if T.cuda.is_available() else "cpu")
         self.device = T.device("cpu" if T.cuda.is_available() else "cpu")
+        self.ITERATION = ITERATION
 
         self.CHECKPOINT_DIR = CHECKPOINT_DIR
 
@@ -44,13 +45,13 @@ class Agent(object):
         self.q_online = RNN_Model(
             LEARNING_RATE=self.lr, WEIGHT_DECAY_LAMBDA=self.wght_lmbda, ACTION_SHAPE=self.num_actions, INPUT_SHAPE=self.BATCH_SIZE * self.input_shape, 
             H_LAYER1_DIMENSION=H_LAYER1_DIMENSION, H_LAYER2_DIMENSION=H_LAYER2_DIMENSION, H_LAYER3_DIMENSION=H_LAYER3_DIMENSION, H_LAYER4_DIMENSION=H_LAYER4_DIMENSION, H_LAYER5_DIMENSION=H_LAYER5_DIMENSION,
-            FILE_NAME=NAME + "_q_online", SAVE_CHECKPOINT_DIRECTORY=self.CHECKPOINT_DIR,
+            FILE_NAME=NAME + "_q_online_abs_" + str(ITERATION), SAVE_CHECKPOINT_DIRECTORY=self.CHECKPOINT_DIR,
             NUM_TRAIN_TIME_FRAMES=NUM_TRAIN_TIME_FRAMES, DEVICE=self.device
         )
         self.q_future = RNN_Model(
             LEARNING_RATE=self.lr, WEIGHT_DECAY_LAMBDA=self.wght_lmbda, ACTION_SHAPE=self.num_actions, INPUT_SHAPE=self.BATCH_SIZE * self.input_shape, 
             H_LAYER1_DIMENSION=H_LAYER1_DIMENSION, H_LAYER2_DIMENSION=H_LAYER2_DIMENSION, H_LAYER3_DIMENSION=H_LAYER3_DIMENSION, H_LAYER4_DIMENSION=H_LAYER4_DIMENSION, H_LAYER5_DIMENSION=H_LAYER5_DIMENSION,
-            FILE_NAME=NAME + "_q_future", SAVE_CHECKPOINT_DIRECTORY=self.CHECKPOINT_DIR,
+            FILE_NAME=NAME + "_q_future_abs_" + str(ITERATION), SAVE_CHECKPOINT_DIRECTORY=self.CHECKPOINT_DIR,
             NUM_TRAIN_TIME_FRAMES=NUM_TRAIN_TIME_FRAMES, DEVICE=self.device
         )
 
@@ -80,11 +81,12 @@ class Agent(object):
         
         return topk_indices.numpy()
     
-    def get_predicted_services_from_learning(self, state):
+    def get_predicted_services_from_learning(self, state, train_mode):
         state = T.tensor(state, dtype=T.float)
 
         # Set to train in order to run dropout and batch normalization
-        self.q_online.train()
+        if(train_mode):
+            self.q_online.train()
 
         expected_values = self.q_online.forward(state)
         actions = self.get_action(expected_values)
@@ -98,11 +100,11 @@ class Agent(object):
         if train_mode:
             random_number = rnd.random()
             if random_number > self.EPSILON:
-                actions = self.get_predicted_services_from_learning(state)
+                actions = self.get_predicted_services_from_learning(state, train_mode)
             else:
                 actions = random.sample(range(self.num_actions), self.NUM_TOP_SERVICES_SELECT)
         else:
-            actions = self.get_predicted_services_from_learning(state)
+            actions = self.get_predicted_services_from_learning(state, train_mode)
 
         return actions
 

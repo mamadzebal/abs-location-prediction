@@ -6,9 +6,9 @@ import random
 import sys
 import time
 
-class DRL(object):
+class ABS_DRL(object):
     def __init__(
-            self, NUM_TIME_FRAMES, NUM_SERVICES, NUM_TRAIN_TIME_FRAMES,
+            self, NUM_TIME_FRAMES, CANDIDATE_LOCATIONS, NUM_TRAIN_TIME_FRAMES, ITERATION,
             EPSILON, EPSILON_MIN, EPSILON_DEC, GAMMA, LR, WEIGHT_DECAY_LAMBDA, BATCH_SIZE, MEMORY_SIZE, REPLACE_COUNTER,
             NUM_TOP_SERVICES_SELECT, CHECKPOINT_DIR,
             REWARD_BASE,
@@ -17,17 +17,18 @@ class DRL(object):
 
         # Agent parameters
         self.BATCH_SIZE = BATCH_SIZE
+        self.ITERATION = ITERATION
         
 
         # DRL parameters
         self.NUM_TIME_FRAMES = NUM_TIME_FRAMES
-        self.NUM_SERVICES = NUM_SERVICES
+        self.CANDIDATE_LOCATIONS = CANDIDATE_LOCATIONS
         self.NUM_TRAIN_TIME_FRAMES = NUM_TRAIN_TIME_FRAMES
         self.FILE_NAME = "agnt"
 
-        self.env_obj = Environment(NUM_TIME_FRAMES = self.NUM_TIME_FRAMES, NUM_SERVICES = NUM_SERVICES, NUM_TRAIN_TIME_FRAMES = NUM_TRAIN_TIME_FRAMES, REWARD_BASE=REWARD_BASE)
+        self.env_obj = Environment(NUM_TIME_FRAMES = self.NUM_TIME_FRAMES, CANDIDATE_LOCATIONS = CANDIDATE_LOCATIONS, NUM_TRAIN_TIME_FRAMES = NUM_TRAIN_TIME_FRAMES, REWARD_BASE=REWARD_BASE, CHECKPOINT_DIR=CHECKPOINT_DIR)
         self.agent = Agent(
-            NUM_ACTIONS = self.NUM_SERVICES, INPUT_SHAPE = self.NUM_TRAIN_TIME_FRAMES * self.NUM_SERVICES, NUM_TRAIN_TIME_FRAMES = self.NUM_TRAIN_TIME_FRAMES, NAME = self.FILE_NAME, 
+            NUM_ACTIONS = self.CANDIDATE_LOCATIONS, INPUT_SHAPE = self.NUM_TRAIN_TIME_FRAMES * self.CANDIDATE_LOCATIONS, NUM_TRAIN_TIME_FRAMES = self.NUM_TRAIN_TIME_FRAMES, NAME = self.FILE_NAME, ITERATION = self.ITERATION,
             EPSILON=EPSILON, EPSILON_MIN=EPSILON_MIN, EPSILON_DEC=EPSILON_DEC, GAMMA=GAMMA, LR=LR, WEIGHT_DECAY_LAMBDA=WEIGHT_DECAY_LAMBDA, BATCH_SIZE=self.BATCH_SIZE, MEMORY_SIZE=MEMORY_SIZE, REPLACE_COUNTER=REPLACE_COUNTER,
             NUM_TOP_SERVICES_SELECT=NUM_TOP_SERVICES_SELECT, CHECKPOINT_DIR=CHECKPOINT_DIR,
             H_LAYER1_DIMENSION=H_LAYER1_DIMENSION, H_LAYER2_DIMENSION=H_LAYER2_DIMENSION, H_LAYER3_DIMENSION=H_LAYER3_DIMENSION, H_LAYER4_DIMENSION=H_LAYER4_DIMENSION, H_LAYER5_DIMENSION=H_LAYER5_DIMENSION
@@ -40,7 +41,7 @@ class DRL(object):
 
         # TODO: remove parameters from agent and set in this place (all of them)
         self.federated = HFL(
-            NUM_USERS=self.NUM_FEDERATED_USERS, LR=0.001, WEIGHT_DECAY_LAMBDA=0.0001, NUM_ACTIONS=self.NUM_SERVICES, INPUT_SHAPE = self.NUM_TRAIN_TIME_FRAMES * self.NUM_SERVICES, FILE_NAME=self.FILE_NAME + "_q_hfl", CHECKPOINT_DIR='tmp-learning-models/', NUM_TRAIN_TIME_FRAMES = self.NUM_TRAIN_TIME_FRAMES, BATCH_SIZE=self.BATCH_SIZE
+            NUM_USERS=self.NUM_FEDERATED_USERS, LR=0.001, WEIGHT_DECAY_LAMBDA=0.0001, NUM_ACTIONS=self.CANDIDATE_LOCATIONS, INPUT_SHAPE = self.NUM_TRAIN_TIME_FRAMES * self.CANDIDATE_LOCATIONS, FILE_NAME=self.FILE_NAME + "_q_hfl", CHECKPOINT_DIR='tmp-learning-models/', NUM_TRAIN_TIME_FRAMES = self.NUM_TRAIN_TIME_FRAMES, BATCH_SIZE=self.BATCH_SIZE
         )
 
     def drl_each_step(self, learn, NUM_TIME_FRAMES, NUM_TRAIN_TIME_FRAMES, states, agent, w_old):
@@ -152,20 +153,24 @@ class DRL(object):
 
 
     def drl_alloc_train(self):
-        self.env_obj.states = self.env_obj.initialize_states('pattern')
-        print(self.env_obj.states.shape)
+        self.env_obj.states, pattern_matrix = self.env_obj.initialize_states('pattern', learn=True)
+        self.env_obj.save_state(pattern_matrix, 'abs_' + str(self.ITERATION))
         total_avg_rewards, bst_rwd, update_w, loss = self.drl_each_step(
             learn=True, NUM_TIME_FRAMES=self.NUM_TIME_FRAMES, NUM_TRAIN_TIME_FRAMES=self.NUM_TRAIN_TIME_FRAMES, states=self.env_obj.states, agent=self.agent, w_old=self.agent.q_future.state_dict()
         )
             
         return total_avg_rewards, bst_rwd, self.agent.GAMMA, self.agent.EPSILON_MIN, self.agent.lr
 
-    def drl_alloc_eval(self):
-        self.env_obj.states = self.env_obj.initialize_states('fixed')
+    def drl_alloc_eval(self, starting_point):
+        self.env_obj.states = self.env_obj.initialize_states('pattern', learn=False, starting_point=starting_point)
         self.agent.load_models()
         self.agent.EPSILON = 0
         self.agent.EPSILON_MIN = 0
         
-        total_avg_rewards, bst_rwd, update_w, loss = self.drl_each_step(learn=False, NUM_TIME_FRAMES=self.NUM_TIME_FRAMES, NUM_TRAIN_TIME_FRAMES=self.NUM_TRAIN_TIME_FRAMES, states=self.env_obj.states, agent=self.agent, w_old=self.agent.q_future.state_dict())
+
+        ACTION_SEED = int(random.randrange(sys.maxsize) / (10 ** 15))
+        actions = self.agent.get_top_predicted_services(self.env_obj.states, ACTION_SEED, False)
+
+        # total_avg_rewards, bst_rwd, update_w, loss = self.drl_each_step(learn=False, NUM_TIME_FRAMES=self.NUM_TIME_FRAMES, NUM_TRAIN_TIME_FRAMES=self.NUM_TRAIN_TIME_FRAMES, states=self.env_obj.states, agent=self.agent, w_old=self.agent.q_future.state_dict())
         
-        return total_avg_rewards, bst_rwd, self.agent.GAMMA, self.agent.EPSILON_MIN, self.agent.LR
+        return actions
